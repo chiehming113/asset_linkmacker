@@ -3,13 +3,10 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>資產編號查詢連結產生器</title>
+    <title>資產編號查詢連結產生器 (資安修正版)</title>
 
-    <!-- Tailwind -->
     <script src="https://cdn.tailwindcss.com"></script>
 
-    <!-- Quagga2 條碼辨識 -->
-    <!-- Quagga2 © MIT License -->
     <script src="https://unpkg.com/@ericblade/quagga2@1.2.6/dist/quagga.js"></script>
 </head>
 <body class="bg-gray-50 flex items-center justify-center min-h-screen p-4 text-base md:text-lg">
@@ -22,7 +19,6 @@
             <b>請於方框中輸入或透過圖片條碼辨識取得資產編號</b>
         </p>
 
-        <!-- 手動輸入 -->
         <div class="space-y-6">
             <div>
                 <label class="block text-sm font-medium text-gray-700 mb-2">資產編號</label>
@@ -44,11 +40,9 @@
                 查詢並開啟新分頁
             </button>
 
-            <!-- 條碼辨識（圖片） -->
             <div class="pt-4 border-t border-gray-200 space-y-3">
                 <h2 class="text-lg font-semibold text-gray-700">條碼辨識取得資產編號</h2>
 
-                <!-- 圖片上傳（行動裝置優先叫出相機） -->
                 <label
                     class="inline-flex items-center justify-center px-4 py-2 rounded-lg shadow-sm text-sm font-medium text-white bg-gray-700 hover:bg-gray-800 cursor-pointer transition-transform hover:scale-[1.01] active:scale-[0.99]"
                 >
@@ -71,7 +65,6 @@
             </div>
         </div>
 
-        <!-- 操作說明 -->
         <div class="mt-8 pt-6 border-t border-gray-200">
             <h2 class="text-xl font-semibold text-gray-700 mb-3">操作說明</h2>
 
@@ -98,14 +91,36 @@
     function searchAsset() {
         const assetId = inputField.value.trim();
 
+        // [資安修正 Point 3] 輸入驗證
+        // 使用正規表達式白名單：僅允許英文字母(A-Z, a-z)、數字(0-9)及連字號(-)
+        const validationRegex = /^[A-Za-z0-9-]+$/;
+
         if (!assetId) {
-            errorMsg.textContent = "資產編號不能為空。";
-            errorMsg.classList.remove("hidden");
+            showError("資產編號不能為空。");
             return;
         }
 
+        if (!validationRegex.test(assetId)) {
+            showError("格式錯誤：資產編號僅允許英數字與連字號 (-)。");
+            return;
+        }
+
+        // 驗證通過，隱藏錯誤訊息
         errorMsg.classList.add("hidden");
-        window.open(BASE_URL + encodeURIComponent(assetId), "_blank");
+
+        // [資安修正 Point 1] 修復 Reverse Tabnabbing
+        // 開啟新視窗
+        const newWindow = window.open(BASE_URL + encodeURIComponent(assetId), "_blank");
+        
+        // 立即切斷 opener 連結，防止新頁面存取此頁面的 window 物件
+        if (newWindow) {
+            newWindow.opener = null;
+        }
+    }
+
+    function showError(msg) {
+        errorMsg.textContent = msg;
+        errorMsg.classList.remove("hidden");
     }
 
     function insertDashBeforeLast4(code) {
@@ -133,6 +148,7 @@
 
     function decodeBarcode(imageData) {
         setStatus("圖片辨識中…");
+        errorMsg.classList.add("hidden"); // 重新辨識時清除舊錯誤
 
         Quagga.decodeSingle(
             {
@@ -155,6 +171,9 @@
 
                     inputField.value = formatted;
                     setStatus(`辨識成功：${raw} → ${formatted}`);
+                    
+                    // 辨識成功後，可以自動隱藏之前的格式錯誤訊息
+                    errorMsg.classList.add("hidden");
                 } else {
                     setStatus("無法辨識條碼，請確認圖片清晰。");
                 }
