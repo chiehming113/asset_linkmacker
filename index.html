@@ -1,0 +1,167 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>資產編號查詢連結產生器</title>
+
+    <!-- Tailwind -->
+    <script src="https://cdn.tailwindcss.com"></script>
+
+    <!-- Quagga2 條碼辨識 -->
+    <!-- Quagga2 © MIT License -->
+    <script src="https://unpkg.com/@ericblade/quagga2@1.2.6/dist/quagga.js"></script>
+</head>
+<body class="bg-gray-50 flex items-center justify-center min-h-screen p-4 text-base md:text-lg">
+
+    <div class="w-full max-w-lg bg-white p-6 md:p-10 rounded-xl shadow-2xl border border-gray-100">
+        <h1 class="text-2xl md:text-3xl font-extrabold text-gray-800 mb-2 text-center">
+            資產明細資料查詢
+        </h1>
+        <p class="text-center text-gray-500 mb-6">
+            <b>請於方框中輸入或透過圖片條碼辨識取得資產編號</b>
+        </p>
+
+        <!-- 手動輸入 -->
+        <div class="space-y-6">
+            <div>
+                <label class="block text-sm font-medium text-gray-700 mb-2">資產編號</label>
+                <input
+                    type="text"
+                    id="assetId"
+                    placeholder="例如：96001089-6060"
+                    class="block w-full px-4 py-3 border border-gray-300 rounded-lg shadow-sm focus:ring-blue-500 focus:border-blue-500 text-lg"
+                    inputmode="text"
+                    autocomplete="off"
+                >
+                <p id="errorMsg" class="mt-2 text-sm text-red-600 hidden"></p>
+            </div>
+
+            <button
+                onclick="searchAsset()"
+                class="w-full py-3 px-4 rounded-lg shadow-lg text-lg font-semibold text-white bg-blue-600 hover:bg-blue-700 transition transform hover:scale-[1.01] active:scale-[0.99]"
+            >
+                查詢並開啟新分頁
+            </button>
+
+            <!-- 條碼辨識（圖片） -->
+            <div class="pt-4 border-t border-gray-200 space-y-3">
+                <h2 class="text-lg font-semibold text-gray-700">條碼辨識取得資產編號</h2>
+
+                <!-- 圖片上傳（行動裝置優先叫出相機） -->
+                <label
+                    class="inline-flex items-center justify-center px-4 py-2 rounded-lg shadow-sm text-sm font-medium text-white bg-gray-700 hover:bg-gray-800 cursor-pointer transition-transform hover:scale-[1.01] active:scale-[0.99]"
+                >
+                    從圖片上傳辨識
+                    <input
+                        id="fileInput"
+                        type="file"
+                        accept="image/*"
+                        capture="environment"
+                        class="hidden"
+                    >
+                </label>
+
+                <p id="statusMsg" class="text-sm text-gray-600 min-h-[1.5rem]"></p>
+
+                <img
+                    id="previewImage"
+                    class="mt-2 w-full max-h-60 object-contain rounded-lg border border-gray-200 hidden"
+                >
+            </div>
+        </div>
+
+        <!-- 操作說明 -->
+        <div class="mt-8 pt-6 border-t border-gray-200">
+            <h2 class="text-xl font-semibold text-gray-700 mb-3">操作說明</h2>
+
+            <p class="text-gray-700 text-sm md:text-base leading-relaxed space-y-2">
+                <span class="block font-semibold text-red-600">
+                    請務必於會內網路環境中使用。
+                </span>
+                <span class="block">
+                    此工具會將您輸入的資產編號，組成完整的連結後，自動在新的瀏覽器分頁中開啟。
+                </span>
+            </p>
+        </div>
+    </div>
+
+<script>
+    const BASE_URL = "https://assetsweb.iii.org.tw/Assets/Common/Ast_Detail.aspx?id=";
+
+    const inputField   = document.getElementById('assetId');
+    const errorMsg     = document.getElementById('errorMsg');
+    const statusMsg    = document.getElementById('statusMsg');
+    const fileInput    = document.getElementById('fileInput');
+    const previewImage = document.getElementById('previewImage');
+
+    function searchAsset() {
+        const assetId = inputField.value.trim();
+
+        if (!assetId) {
+            errorMsg.textContent = "資產編號不能為空。";
+            errorMsg.classList.remove("hidden");
+            return;
+        }
+
+        errorMsg.classList.add("hidden");
+        window.open(BASE_URL + encodeURIComponent(assetId), "_blank");
+    }
+
+    function insertDashBeforeLast4(code) {
+        if (!code || code.length <= 4) return code;
+        return code.slice(0, code.length - 4) + "-" + code.slice(code.length - 4);
+    }
+
+    function setStatus(msg) {
+        statusMsg.textContent = msg ?? "";
+    }
+
+    fileInput.addEventListener("change", () => {
+        const file = fileInput.files[0];
+        if (!file) return;
+
+        const reader = new FileReader();
+        reader.onload = (e) => {
+            const dataUrl = e.target.result;
+            previewImage.src = dataUrl;
+            previewImage.classList.remove("hidden");
+            decodeBarcode(dataUrl);
+        };
+        reader.readAsDataURL(file);
+    });
+
+    function decodeBarcode(imageData) {
+        setStatus("圖片辨識中…");
+
+        Quagga.decodeSingle(
+            {
+                src: imageData,
+                numOfWorkers: 0,
+                inputStream: { size: 800 },
+                decoder: {
+                    readers: [
+                        "code_128_reader",
+                        "ean_reader",
+                        "ean_8_reader",
+                        "code_39_reader"
+                    ]
+                }
+            },
+            (result) => {
+                if (result && result.codeResult) {
+                    const raw = result.codeResult.code;
+                    const formatted = insertDashBeforeLast4(raw);
+
+                    inputField.value = formatted;
+                    setStatus(`辨識成功：${raw} → ${formatted}`);
+                } else {
+                    setStatus("無法辨識條碼，請確認圖片清晰。");
+                }
+            }
+        );
+    }
+</script>
+
+</body>
+</html>
