@@ -29,6 +29,7 @@
                     class="block w-full px-4 py-3 border border-gray-300 rounded-lg shadow-sm focus:ring-blue-500 focus:border-blue-500 text-lg"
                     inputmode="text"
                     autocomplete="off"
+                    onblur="handleBlur()"
                 >
                 <p id="errorMsg" class="mt-2 text-sm text-red-600 hidden"></p>
             </div>
@@ -61,6 +62,7 @@
                 <img
                     id="previewImage"
                     class="mt-2 w-full max-h-60 object-contain rounded-lg border border-gray-200 hidden"
+                    alt="條碼預覽"
                 >
             </div>
         </div>
@@ -88,11 +90,41 @@
     const fileInput    = document.getElementById('fileInput');
     const previewImage = document.getElementById('previewImage');
 
-    function searchAsset() {
-        const assetId = inputField.value.trim();
+    /**
+     * 核心邏輯：格式化資產編號
+     * 規則：如果內容沒有連字號且長度大於4，則在倒數第4碼前插入 -
+     */
+    function formatAssetIdString(code) {
+        if (!code) return "";
+        let val = code.trim();
+        
+        // 檢查是否已有連字號，若無且長度足夠，則插入
+        if (!val.includes('-') && val.length > 4) {
+            return val.slice(0, val.length - 4) + "-" + val.slice(val.length - 4);
+        }
+        return val;
+    }
 
-        // [資安修正 Point 3] 輸入驗證
-        // 使用正規表達式白名單：僅允許英文字母(A-Z, a-z)、數字(0-9)及連字號(-)
+    /**
+     * 當使用者離開輸入框時觸發
+     */
+    function handleBlur() {
+        const original = inputField.value;
+        const formatted = formatAssetIdString(original);
+        if (original !== formatted) {
+            inputField.value = formatted;
+        }
+    }
+
+    function searchAsset() {
+        // 1. 取得輸入值並執行格式化
+        let assetId = formatAssetIdString(inputField.value);
+        
+        // 將格式化後的結果寫回 UI，讓使用者知道系統做了修正
+        inputField.value = assetId;
+
+        // 2. [資安修正 Point] 輸入驗證 (正規表達式白名單)
+        // 僅允許英文字母、數字及連字號
         const validationRegex = /^[A-Za-z0-9-]+$/;
 
         if (!assetId) {
@@ -108,29 +140,27 @@
         // 驗證通過，隱藏錯誤訊息
         errorMsg.classList.add("hidden");
 
-        // [資安修正 Point 1] 修復 Reverse Tabnabbing
-        // 開啟新視窗
+        // 3. [資安修正 Point] 開啟新視窗並切斷 opener 關聯
+        // 使用 encodeURIComponent 防止參數注入
         const newWindow = window.open(BASE_URL + encodeURIComponent(assetId), "_blank");
         
-        // 立即切斷 opener 連結，防止新頁面存取此頁面的 window 物件
+        // 防止 Reverse Tabnabbing 攻擊
         if (newWindow) {
             newWindow.opener = null;
         }
     }
 
     function showError(msg) {
+        // 使用 textContent 防止 XSS
         errorMsg.textContent = msg;
         errorMsg.classList.remove("hidden");
-    }
-
-    function insertDashBeforeLast4(code) {
-        if (!code || code.length <= 4) return code;
-        return code.slice(0, code.length - 4) + "-" + code.slice(code.length - 4);
     }
 
     function setStatus(msg) {
         statusMsg.textContent = msg ?? "";
     }
+
+    // --- 圖片辨識邏輯 ---
 
     fileInput.addEventListener("change", () => {
         const file = fileInput.files[0];
@@ -148,7 +178,7 @@
 
     function decodeBarcode(imageData) {
         setStatus("圖片辨識中…");
-        errorMsg.classList.add("hidden"); // 重新辨識時清除舊錯誤
+        errorMsg.classList.add("hidden");
 
         Quagga.decodeSingle(
             {
@@ -167,12 +197,13 @@
             (result) => {
                 if (result && result.codeResult) {
                     const raw = result.codeResult.code;
-                    const formatted = insertDashBeforeLast4(raw);
+                    
+                    // 重用上方定義的格式化函數，保持邏輯一致
+                    const formatted = formatAssetIdString(raw);
 
                     inputField.value = formatted;
                     setStatus(`辨識成功：${raw} → ${formatted}`);
                     
-                    // 辨識成功後，可以自動隱藏之前的格式錯誤訊息
                     errorMsg.classList.add("hidden");
                 } else {
                     setStatus("無法辨識條碼，請確認圖片清晰。");
